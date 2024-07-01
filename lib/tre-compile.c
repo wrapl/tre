@@ -722,7 +722,6 @@ tre_copy_ast(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *ast,
 		} else if (IS_PARAMETER(lit)) {
 		  ((tre_literal_t *)(*result)->obj)->u.params = lit->u.params;
 		}
-
 		if (pos > *max_pos)
 		  *max_pos = pos;
 		break;
