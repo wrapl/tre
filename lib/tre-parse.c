@@ -252,6 +252,55 @@ tre_ctype_t tre_ctype(const char *name)
 
 #define REST(re) (int)(ctx->re_end - (re)), (re)
 
+static reg_errcode_t tre_parse_bracket_char(tre_parse_ctx_t *ctx, const tre_char_t **rep, tre_cint_t *out) {
+	const tre_char_t *re = *rep;
+	if (*re == CHAR_BACKSLASH) {
+		if (re + 1 == ctx->re_end) return REG_EESCAPE;
+		switch (*(re + 1)) {
+		case 't': *out = '\t'; re += 2; break;
+		case 'r': *out = '\r'; re += 2; break;
+		case 'n': *out = '\n'; re += 2; break;
+		case 'e': *out = '\e'; re += 2; break;
+		case 'x': if (*(re + 2) == '{') {
+			char tmp[9]; /* max 8 hex digits + terminator */
+			size_t i = 0;
+			re += 3;
+			while (re < ctx->re_end) {
+				if (*re == CHAR_RBRACE) break;
+				if (tre_isxdigit(*re) && i < 8) {
+					tmp[i++] = (char)*re++;
+					continue;
+				}
+				return REG_EBRACE;
+			}
+			tmp[i] = 0;
+			*out = strtol(tmp, NULL, 16);
+			re++;
+		} else {
+			char tmp[3] = {0, 0, 0};
+			if (re + 3 >= ctx->re_end) return REG_EESCAPE;
+			if (!tre_isxdigit(*(re + 2))) return REG_EESCAPE;
+			tmp[0] = *(re + 2);
+			if (!tre_isxdigit(*(re + 3))) return REG_EESCAPE;
+			tmp[1] = *(re + 3);
+			*out = strtol(tmp, NULL, 16);
+			re += 4;
+		}
+		break;
+		case '[': *out = '['; re += 2; break;
+		case ']': *out = ']'; re += 2; break;
+		case '-': *out = '-'; re += 2; break;
+		case '\'': *out = '\''; re += 2; break;
+		case '\"': *out = '\"'; re += 2; break;
+		case '\\': *out = '\\'; re += 2; break;
+		}
+	} else {
+		*out = *re++;
+	}
+	*rep = re;
+	return REG_OK;
+}
+
 static reg_errcode_t
 tre_parse_bracket_items(tre_parse_ctx_t *ctx, int negate,
 			tre_ctype_t neg_classes[], int *num_neg_classes,
@@ -281,19 +330,7 @@ tre_parse_bracket_items(tre_parse_ctx_t *ctx, int negate,
 	  break;
 	}
       class = (tre_ctype_t)0;
-      if (re + 2 < ctx->re_end
-	  && *(re + 1) == CHAR_MINUS && *(re + 2) != CHAR_RBRACKET)
-	{
-	  DPRINT(("tre_parse_bracket:  range: '%.*" STRF "'\n", REST(re)));
-	  min = *re;
-	  max = *(re + 2);
-	  re += 3;
-	  /* XXX - Should use collation order instead of encoding values
-	     in character ranges. */
-	  if (min > max)
-	    return REG_ERANGE;
-	}
-      else if (re + 1 < ctx->re_end
+      if (re + 1 < ctx->re_end
 	       && *re == CHAR_LBRACKET && *(re + 1) == CHAR_PERIOD)
 	return REG_ECOLLATE;
       else if (re + 1 < ctx->re_end
@@ -355,14 +392,21 @@ tre_parse_bracket_items(tre_parse_ctx_t *ctx, int negate,
 	  max = TRE_CHAR_MAX;
 	}
       else
-	{
-	  DPRINT(("tre_parse_bracket:   char: '%.*" STRF "'\n", REST(re)));
-	  if (*re == CHAR_MINUS && *(re + 1) != CHAR_RBRACKET
-	      && ctx->re != re)
-	    /* Two ranges are not allowed to share and endpoint. */
-	    return REG_ERANGE;
-	  min = max = *re++;
-	}
+    {
+    	  if (*re == CHAR_MINUS && *(re + 1) != CHAR_RBRACKET && ctx->re != re)
+    		   /* Two ranges are not allowed to share and endpoint. */
+    		   return REG_ERANGE;
+    	  status = tre_parse_bracket_char(ctx, &re, &min);
+    	  if (status != REG_OK) return status;
+    	  if (*re == CHAR_MINUS && *(re + 1) != CHAR_RBRACKET) {
+    		  ++re;
+    		  status = tre_parse_bracket_char(ctx, &re, &max);
+    		  if (status != REG_OK) return status;
+    		  if (min > max) return REG_ERANGE;
+    	  } else {
+    		  max = min;
+    	  }
+    }
 
       if (class && negate)
 	if (*num_neg_classes >= MAX_NEG_CLASSES)
