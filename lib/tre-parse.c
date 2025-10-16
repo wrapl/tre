@@ -293,6 +293,7 @@ static reg_errcode_t tre_parse_bracket_char(tre_parse_ctx_t *ctx, const tre_char
 		case '\'': *out = '\''; re += 2; break;
 		case '\"': *out = '\"'; re += 2; break;
 		case '\\': *out = '\\'; re += 2; break;
+		default: return REG_EESCAPE;
 		}
 	} else {
 		*out = *re++;
