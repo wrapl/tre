@@ -297,15 +297,15 @@ static reg_errcode_t tre_parse_bracket_char(tre_parse_ctx_t *ctx, const tre_char
 		case '\\': *out = '\\'; re += 2; break;
 		case 'w':
 			if (!class_out) return REG_BADPAT;
-			*class_out = &tre_isalnum_func; re += 2;
+			*class_out = tre_ctype("alnum"); re += 2;
 			break;
 		case 's':
 			if (!class_out) return REG_BADPAT;
-			*class_out = &tre_isspace_func; re += 2;
+			*class_out = tre_ctype("space"); re += 2;
 			break;
 		case 'd':
 			if (!class_out) return REG_BADPAT;
-			*class_out = &tre_isdigit_func; re += 2;
+			*class_out = tre_ctype("digit"); re += 2;
 			break;
 		default: return REG_EESCAPE;
 		}
