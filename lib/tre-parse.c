@@ -252,14 +252,16 @@ tre_ctype_t tre_ctype(const char *name)
 
 #define REST(re) (int)(ctx->re_end - (re)), (re)
 
-static reg_errcode_t tre_parse_bracket_char(tre_parse_ctx_t *ctx, const tre_char_t **rep, tre_cint_t *out) {
+static reg_errcode_t tre_parse_bracket_char(tre_parse_ctx_t *ctx, const tre_char_t **rep, tre_cint_t *out, tre_ctype_t *class_out) {
 	const tre_char_t *re = *rep;
 	if (*re == CHAR_BACKSLASH) {
 		if (re + 1 == ctx->re_end) return REG_EESCAPE;
 		switch (*(re + 1)) {
 		case 't': *out = '\t'; re += 2; break;
-		case 'r': *out = '\r'; re += 2; break;
 		case 'n': *out = '\n'; re += 2; break;
+		case 'r': *out = '\r'; re += 2; break;
+		case 'f': *out = '\f'; re += 2; break;
+		case 'a': *out = '\a'; re += 2; break;
 		case 'e': *out = '\e'; re += 2; break;
 		case 'x': if (*(re + 2) == '{') {
 			char tmp[9]; /* max 8 hex digits + terminator */
@@ -293,6 +295,18 @@ static reg_errcode_t tre_parse_bracket_char(tre_parse_ctx_t *ctx, const tre_char
 		case '\'': *out = '\''; re += 2; break;
 		case '\"': *out = '\"'; re += 2; break;
 		case '\\': *out = '\\'; re += 2; break;
+		case 'w':
+			if (!class_out) return REG_BADPAT;
+			*class_out = &tre_isalnum_func; re += 2;
+			break;
+		case 's':
+			if (!class_out) return REG_BADPAT;
+			*class_out = &tre_isspace_func; re += 2;
+			break;
+		case 'd':
+			if (!class_out) return REG_BADPAT;
+			*class_out = &tre_isdigit_func; re += 2;
+			break;
 		default: return REG_EESCAPE;
 		}
 	} else {
@@ -394,19 +408,28 @@ tre_parse_bracket_items(tre_parse_ctx_t *ctx, int negate,
 	}
       else
     {
-    	  if (*re == CHAR_MINUS && *(re + 1) != CHAR_RBRACKET && ctx->re != re)
-    		   /* Two ranges are not allowed to share and endpoint. */
-    		   return REG_ERANGE;
-    	  status = tre_parse_bracket_char(ctx, &re, &min);
-    	  if (status != REG_OK) return status;
-    	  if (*re == CHAR_MINUS && *(re + 1) != CHAR_RBRACKET) {
-    		  ++re;
-    		  status = tre_parse_bracket_char(ctx, &re, &max);
-    		  if (status != REG_OK) return status;
-    		  if (min > max) return REG_ERANGE;
-    	  } else {
-    		  max = min;
-    	  }
+		if (*re == CHAR_MINUS && *(re + 1) != CHAR_RBRACKET && ctx->re != re)
+		   /* Two ranges are not allowed to share and endpoint. */
+		   return REG_ERANGE;
+		status = tre_parse_bracket_char(ctx, &re, &min, &class);
+		if (status != REG_OK) return status;
+		if (class) {
+			if (ctx->mb_cur_max == 1) {
+				status = tre_expand_ctype(ctx->mem, class, items, &i, &max_i, ctx->cflags);
+				if (status != REG_OK) return status;
+				class = (tre_ctype_t)0;
+				skip = 1;
+			}
+			min = 0;
+			max = TRE_CHAR_MAX;
+		} else if (*re == CHAR_MINUS && *(re + 1) != CHAR_RBRACKET) {
+		  ++re;
+		  status = tre_parse_bracket_char(ctx, &re, &max, NULL);
+		  if (status != REG_OK) return status;
+		  if (min > max) return REG_ERANGE;
+		} else {
+		  max = min;
+		}
     }
 
       if (class && negate)
