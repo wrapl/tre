@@ -307,7 +307,10 @@ static reg_errcode_t tre_parse_bracket_char(tre_parse_ctx_t *ctx, const tre_char
 			if (!class_out) return REG_BADPAT;
 			*class_out = tre_ctype("digit"); re += 2;
 			break;
-		default: return REG_EESCAPE;
+		default:
+			*out = '\\';
+			re += 1;
+			break;
 		}
 	} else {
 		*out = *re++;
